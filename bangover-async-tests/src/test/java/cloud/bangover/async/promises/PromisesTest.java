@@ -1,12 +1,14 @@
 package cloud.bangover.async.promises;
 
-import cloud.bangover.async.promises.Promises.PromiseRejectionDuplicateException;
-import cloud.bangover.async.promises.Promises.PromiseResolutionDuplicateException;
-import cloud.bangover.async.timer.Timer;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+
+import cloud.bangover.async.promises.Promises.PromiseRejectionDuplicateException;
+import cloud.bangover.async.promises.Promises.PromiseResolutionDuplicateException;
+import cloud.bangover.timer.Timeout;
+import cloud.bangover.timer.Timer;
 
 @RunWith(JUnit4.class)
 public class PromisesTest {
@@ -15,23 +17,23 @@ public class PromisesTest {
   private static final Exception UNTYPED_EXCEPTION = new Exception("THE UNTYPED ERROR!");
 
   @Test
-  public void shouldResolvePromisesWithoutErrors() {
+  public void shouldResolvePromisesWithoutErrors() throws Exception {
     // Given
     MockResponseHandler<String> firstResponseHandler = new MockResponseHandler<String>();
     MockResponseHandler<String> secondResponseHandler = new MockResponseHandler<String>();
     MockErrorHandler<RuntimeException> firstErrorHandler = new MockErrorHandler<RuntimeException>();
-    MockErrorHandler<Throwable> secondErrorHandler = new MockErrorHandler<Throwable>();
+    MockErrorHandler<Exception> secondErrorHandler = new MockErrorHandler<>();
     // When
-    WaitingPromise.of(Promises.of(new Deferred.DeferredFunction<String>() {
+    Promises.of(new Deferred.DeferredFunction<String>() {
       @Override
       public void execute(Deferred<String> deferred) {
         Timer.sleep(1000L);
         deferred.resolve(RESPONSE);
       }
-    })).then(firstResponseHandler).then(secondResponseHandler)
+    }).then(firstResponseHandler).then(secondResponseHandler)
         .error(RuntimeException.class, firstErrorHandler).error(secondErrorHandler).await();
     // Then
-    
+
     Assert.assertTrue(firstResponseHandler.getHistory().hasEntry(0, RESPONSE));
     Assert.assertTrue(secondResponseHandler.getHistory().hasEntry(0, RESPONSE));
     Assert.assertFalse(firstErrorHandler.getHistory().hasEntries());
@@ -39,19 +41,19 @@ public class PromisesTest {
   }
 
   @Test
-  public void shouldTypedErrorHandlerBeResolved() {
+  public void shouldTypedErrorHandlerBeResolved() throws Exception {
     // Given
     MockResponseHandler<String> responseHandler = new MockResponseHandler<String>();
     MockErrorHandler<RuntimeException> firstErrorHandler = new MockErrorHandler<RuntimeException>();
-    MockErrorHandler<Throwable> secondErrorHandler = new MockErrorHandler<Throwable>();
+    MockErrorHandler<Exception> secondErrorHandler = new MockErrorHandler<>();
     // When
-    WaitingPromise.of(Promises.of(new Deferred.DeferredFunction<String>() {
+    Promises.of(new Deferred.DeferredFunction<String>() {
       @Override
       public void execute(Deferred<String> deferred) {
         Timer.sleep(1000L);
         deferred.reject(TYPED_EXCEPTION);
       }
-    })).then(responseHandler).error(RuntimeException.class, firstErrorHandler)
+    }).then(responseHandler).error(RuntimeException.class, firstErrorHandler)
         .error(secondErrorHandler).await();
     // Then
     Assert.assertFalse(responseHandler.getHistory().hasEntries());
@@ -60,19 +62,19 @@ public class PromisesTest {
   }
 
   @Test
-  public void shouldUntypedErrorHandlerBeResolved() {
+  public void shouldUntypedErrorHandlerBeResolved() throws Exception {
     // Given
     MockResponseHandler<String> responseHandler = new MockResponseHandler<String>();
     MockErrorHandler<RuntimeException> firstErrorHandler = new MockErrorHandler<RuntimeException>();
-    MockErrorHandler<Throwable> secondErrorHandler = new MockErrorHandler<Throwable>();
+    MockErrorHandler<Exception> secondErrorHandler = new MockErrorHandler<>();
     // When
-    WaitingPromise.of(Promises.of(new Deferred.DeferredFunction<String>() {
+    Promises.of(new Deferred.DeferredFunction<String>() {
       @Override
       public void execute(Deferred<String> deferred) {
         Timer.sleep(1000L);
         deferred.reject(UNTYPED_EXCEPTION);
       }
-    })).then(responseHandler).error(RuntimeException.class, firstErrorHandler)
+    }).then(responseHandler).error(RuntimeException.class, firstErrorHandler)
         .error(secondErrorHandler).await();
     // Then
     Assert.assertFalse(responseHandler.getHistory().hasEntries());
@@ -81,32 +83,32 @@ public class PromisesTest {
   }
 
   @Test
-  public void shouldPromiseBeRejectedIfExceptionIsThrownFromDeferredFunction() {
+  public void shouldPromiseBeRejectedIfExceptionIsThrownFromDeferredFunction() throws Exception {
     // Given
     MockResponseHandler<String> responseHandler = new MockResponseHandler<String>();
-    MockErrorHandler<Throwable> errorHandler = new MockErrorHandler<Throwable>();
+    MockErrorHandler<Exception> errorHandler = new MockErrorHandler<>();
     // When
-    WaitingPromise.of(Promises.of(new Deferred.DeferredFunction<String>() {
+    Promises.of(new Deferred.DeferredFunction<String>() {
       @Override
       public void execute(Deferred<String> deferred) {
         Timer.sleep(1000L);
         throw TYPED_EXCEPTION;
       }
-    })).then(responseHandler).error(errorHandler).await();
+    }).then(responseHandler).error(errorHandler).await();
     // Then
     Assert.assertFalse(responseHandler.getHistory().hasEntries());
     Assert.assertTrue(errorHandler.getHistory().hasEntry(0, TYPED_EXCEPTION));
   }
 
   @Test
-  public void shouldPromiseBeProtectedOfDoubleResolution() {
+  public void shouldPromiseBeProtectedOfDoubleResolution() throws Exception {
     // Given
     MockErrorHandler<PromiseResolutionDuplicateException> manualHandler =
         new MockErrorHandler<PromiseResolutionDuplicateException>();
     MockErrorHandler<PromiseResolutionDuplicateException> errorHandler =
         new MockErrorHandler<PromiseResolutionDuplicateException>();
     // When
-    WaitingPromise.of(Promises.of(new Deferred.DeferredFunction<String>() {
+    Promises.of(new Deferred.DeferredFunction<String>() {
       @Override
       public void execute(Deferred<String> deferred) {
         try {
@@ -116,21 +118,23 @@ public class PromisesTest {
           manualHandler.onError(error);
         }
       }
-    })).error(PromiseResolutionDuplicateException.class, errorHandler).await();
+    }).error(PromiseResolutionDuplicateException.class, errorHandler);
+    Timer.sleep(Timeout.ofSeconds(10L));
+
     // Then
     Assert.assertTrue(manualHandler.getHistory().hasEntries());
     Assert.assertFalse(errorHandler.getHistory().hasEntries());
   }
 
   @Test
-  public void shouldPromiseBeProtectedOfDoubleRejection() {
+  public void shouldPromiseBeProtectedOfDoubleRejection() throws Exception {
     // Given
     MockErrorHandler<PromiseRejectionDuplicateException> manualHandler =
         new MockErrorHandler<PromiseRejectionDuplicateException>();
     MockErrorHandler<PromiseRejectionDuplicateException> errorHandler =
         new MockErrorHandler<PromiseRejectionDuplicateException>();
     // When
-    WaitingPromise.of(Promises.of(new Deferred.DeferredFunction<String>() {
+    Promises.of(new Deferred.DeferredFunction<String>() {
       @Override
       public void execute(Deferred<String> deferred) {
         try {
@@ -140,21 +144,23 @@ public class PromisesTest {
           manualHandler.onError(error);
         }
       }
-    })).error(PromiseRejectionDuplicateException.class, errorHandler).await();
+    }).error(PromiseRejectionDuplicateException.class, errorHandler);
+    Timer.sleep(Timeout.ofSeconds(10L));
+
     // Then
     Assert.assertTrue(manualHandler.getHistory().hasEntries());
     Assert.assertFalse(errorHandler.getHistory().hasEntries());
   }
 
   @Test
-  public void shouldPromiseBeProtectedOfRejectionAfterResolution() {
+  public void shouldPromiseBeProtectedOfRejectionAfterResolution() throws Exception {
     // Given
     MockErrorHandler<PromiseResolutionDuplicateException> manualHandler =
         new MockErrorHandler<PromiseResolutionDuplicateException>();
     MockErrorHandler<PromiseResolutionDuplicateException> errorHandler =
         new MockErrorHandler<PromiseResolutionDuplicateException>();
     // When
-    WaitingPromise.of(Promises.of(new Deferred.DeferredFunction<String>() {
+    Promises.of(new Deferred.DeferredFunction<String>() {
       @Override
       public void execute(Deferred<String> deferred) {
         try {
@@ -164,21 +170,23 @@ public class PromisesTest {
           manualHandler.onError(error);
         }
       }
-    })).error(PromiseResolutionDuplicateException.class, errorHandler).await();
+    }).error(PromiseResolutionDuplicateException.class, errorHandler);
+    Timer.sleep(Timeout.ofSeconds(10L));
+
     // Then
     Assert.assertTrue(manualHandler.getHistory().hasEntries());
     Assert.assertFalse(errorHandler.getHistory().hasEntries());
   }
 
   @Test
-  public void shouldPromiseBeProtectedOfResolutionAfterRejection() {
+  public void shouldPromiseBeProtectedOfResolutionAfterRejection() throws Exception {
     // Given
     MockErrorHandler<PromiseRejectionDuplicateException> manualHandler =
         new MockErrorHandler<PromiseRejectionDuplicateException>();
     MockErrorHandler<PromiseRejectionDuplicateException> errorHandler =
         new MockErrorHandler<PromiseRejectionDuplicateException>();
     // When
-    WaitingPromise.of(Promises.of(new Deferred.DeferredFunction<String>() {
+    Promises.of(new Deferred.DeferredFunction<String>() {
       @Override
       public void execute(Deferred<String> deferred) {
         try {
@@ -188,24 +196,26 @@ public class PromisesTest {
           manualHandler.onError(error);
         }
       }
-    })).error(PromiseRejectionDuplicateException.class, errorHandler).await();
+    }).error(PromiseRejectionDuplicateException.class, errorHandler);
+    Timer.sleep(Timeout.ofSeconds(10L));
+
     // Then
     Assert.assertTrue(manualHandler.getHistory().hasEntries());
     Assert.assertFalse(errorHandler.getHistory().hasEntries());
   }
 
   @Test
-  public void shouldResolvePromisesChain() {
+  public void shouldResolvePromisesChain() throws Exception {
     // Given
     MockResponseHandler<Integer> initialResponseHandler = new MockResponseHandler<Integer>();
     MockResponseHandler<String> chainedResponseHandler = new MockResponseHandler<String>();
     // When
-    WaitingPromise.of(Promises.of(new Deferred.DeferredFunction<Integer>() {
+    Promises.of(new Deferred.DeferredFunction<Integer>() {
       @Override
       public void execute(Deferred<Integer> deferred) {
         deferred.resolve(100);
       }
-    })).then(initialResponseHandler).chain(new Promise.ChainingDeferredFunction<Integer, String>() {
+    }).then(initialResponseHandler).chain(new Promise.ChainingDeferredFunction<Integer, String>() {
       @Override
       public void execute(Integer previousResult, Deferred<String> deferred) {
         deferred.resolve(previousResult.toString());
@@ -217,19 +227,20 @@ public class PromisesTest {
   }
 
   @Test
-  public void shouldRejectChainedPromiseInCaseWhenInitialResolvedButChainedRejected() {
+  public void shouldRejectChainedPromiseInCaseWhenInitialResolvedButChainedRejected()
+      throws Exception {
     // Given
     MockResponseHandler<Integer> initialResponseHandler = new MockResponseHandler<Integer>();
     MockResponseHandler<String> chainedResponseHandler = new MockResponseHandler<String>();
     MockErrorHandler<RuntimeException> chainedErrorHandler =
         new MockErrorHandler<RuntimeException>();
     // When
-    WaitingPromise.of(Promises.of(new Deferred.DeferredFunction<Integer>() {
+    Promises.of(new Deferred.DeferredFunction<Integer>() {
       @Override
       public void execute(Deferred<Integer> deferred) {
         deferred.resolve(100);
       }
-    })).then(initialResponseHandler).chain(new Promise.ChainingDeferredFunction<Integer, String>() {
+    }).then(initialResponseHandler).chain(new Promise.ChainingDeferredFunction<Integer, String>() {
       @Override
       public void execute(Integer previousResult, Deferred<String> deferred) {
         deferred.reject(TYPED_EXCEPTION);
@@ -242,19 +253,20 @@ public class PromisesTest {
   }
 
   @Test
-  public void shouldRejectChainedPromiseInCaseWhenInitialResolvedButExceptionThrownInChainedDeferredFunction() {
+  public void shouldRejectChainedPromiseInCaseWhenInitialResolvedButExceptionThrownInChainedDeferredFunction()
+      throws Exception {
     // Given
     MockResponseHandler<Integer> initialResponseHandler = new MockResponseHandler<Integer>();
     MockResponseHandler<String> chainedResponseHandler = new MockResponseHandler<String>();
     MockErrorHandler<RuntimeException> chainedErrorHandler =
         new MockErrorHandler<RuntimeException>();
     // When
-    WaitingPromise.of(Promises.of(new Deferred.DeferredFunction<Integer>() {
+    Promises.of(new Deferred.DeferredFunction<Integer>() {
       @Override
       public void execute(Deferred<Integer> deferred) {
         deferred.resolve(100);
       }
-    })).then(initialResponseHandler).chain(new Promise.ChainingDeferredFunction<Integer, String>() {
+    }).then(initialResponseHandler).chain(new Promise.ChainingDeferredFunction<Integer, String>() {
       @Override
       public void execute(Integer previousResult, Deferred<String> deferred) {
         throw TYPED_EXCEPTION;
@@ -267,51 +279,50 @@ public class PromisesTest {
   }
 
   @Test
-  public void shouldResolvedPromiseBeCreatedByValue() {
+  public void shouldResolvedPromiseBeCreatedByValue() throws Exception {
     // Given
     MockResponseHandler<String> responseHandler = new MockResponseHandler<String>();
     // When
-    WaitingPromise.of(Promises.resolvedBy(RESPONSE)).then(responseHandler).await();
+    Promises.resolvedBy(RESPONSE).then(responseHandler).await();
     // Then
     Assert.assertTrue(responseHandler.getHistory().hasEntry(0, RESPONSE));
   }
-  
+
   @Test
-  public void shouldRejectedPromiseBeCreatedByError() {
+  public void shouldRejectedPromiseBeCreatedByError() throws Exception {
     // Given
-    MockErrorHandler<RuntimeException> errorHandler =
-        new MockErrorHandler<RuntimeException>();
+    MockErrorHandler<RuntimeException> errorHandler = new MockErrorHandler<RuntimeException>();
     // When
-    WaitingPromise.of(Promises.rejectedBy(TYPED_EXCEPTION)).error(RuntimeException.class, errorHandler).await();
+    Promises.rejectedBy(TYPED_EXCEPTION).error(RuntimeException.class, errorHandler).await();
     // Then
-    Assert.assertTrue(errorHandler.getHistory().hasEntry(0, TYPED_EXCEPTION));    
+    Assert.assertTrue(errorHandler.getHistory().hasEntry(0, TYPED_EXCEPTION));
   }
-  
+
   @Test
-  public void shouldPromiseBeFinalizedOnResolve() {
-    // Given
-    MockFinalizingHandler finalizingHandler = new MockFinalizingHandler();
-    // When
-    WaitingPromise.of(Promises.resolvedBy(RESPONSE)).finalize(finalizingHandler).await();
-    // Then
-    Assert.assertTrue(finalizingHandler.isFinalized());
-  }
-  
-  @Test
-  public void shouldPromiseBeFinalizedOnReject() {
+  public void shouldPromiseBeFinalizedOnResolve() throws Exception {
     // Given
     MockFinalizingHandler finalizingHandler = new MockFinalizingHandler();
     // When
-    WaitingPromise.of(Promises.rejectedBy(TYPED_EXCEPTION)).finalize(finalizingHandler).await();
+    Promises.resolvedBy(RESPONSE).finalize(finalizingHandler).await();
     // Then
     Assert.assertTrue(finalizingHandler.isFinalized());
   }
-  
+
+  @Test
+  public void shouldPromiseBeFinalizedOnReject() throws Exception {
+    // Given
+    MockFinalizingHandler finalizingHandler = new MockFinalizingHandler();
+    // When
+    Promises.rejectedBy(TYPED_EXCEPTION).finalize(finalizingHandler).await();
+    // Then
+    Assert.assertTrue(finalizingHandler.isFinalized());
+  }
+
   @Test
   public void shouldResultBeReturnedSynchronously() throws Throwable {
     Assert.assertEquals(RESPONSE, Promises.resolvedBy(RESPONSE).get(1L));
   }
-  
+
   @Test(expected = RuntimeException.class)
   public void shouldErrorBeRethrownOnRejection() throws Throwable {
     Promises.rejectedBy(TYPED_EXCEPTION).get(1L);

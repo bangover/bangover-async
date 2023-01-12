@@ -32,7 +32,7 @@ public class ExecutorServiceBasedDeferredFunctionRunner implements DeferredFunct
     return deferred -> {
       try {
         deferredOperationExecutor.execute(deferred);
-      } catch (Throwable error) {
+      } catch (Exception error) {
         deferred.reject(error);
       }
     };

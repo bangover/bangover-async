@@ -37,7 +37,7 @@ public interface Promise<T> {
    * @param errorHandler THe error handler
    * @return The derived promise instance
    */
-  public <E extends Throwable> Promise<T> error(Class<E> errorType, ErrorHandler<E> errorHandler);
+  public <E extends Exception> Promise<T> error(Class<E> errorType, ErrorHandler<E> errorHandler);
 
   /**
    * Determine default reaction for errors, which isn't matched to the registered event types and
@@ -46,7 +46,7 @@ public interface Promise<T> {
    * @param errorHandler The error handler
    * @return The derived promise instance
    */
-  public Promise<T> error(ErrorHandler<Throwable> errorHandler);
+  public Promise<T> error(ErrorHandler<Exception> errorHandler);
 
   /**
    * Delegate the promise rejection affect to the external deferred operation.
@@ -95,9 +95,26 @@ public interface Promise<T> {
    *
    * @param timeout The promise response waiting timeout in seconds
    * @return The returned value, received on promise resolving
-   * @throws Throwable The thrown exception, received on promise rejection
+   * @throws Exception The thrown exception, received on promise rejection
    */
-  public T get(long timeout) throws Throwable;
+  public T get(long timeout) throws Exception;
+
+  /**
+   * Await promise resolution or rejection.
+   *
+   * @param timeout The timeout
+   * @throws Exception The thrown exception, received on promise rejection
+   */
+  public void await(long timeout) throws Exception;
+
+  /**
+   * Await promise resolution or rejection.
+   *
+   * @throws Exception The thrown exception, received on promise rejection
+   */
+  default void await() throws Exception {
+    this.await(10);
+  }
 
   /**
    * This interface declares the contract for the component which handles result on resolving.
@@ -122,7 +139,7 @@ public interface Promise<T> {
    *
    * @param <E> The error handler
    */
-  public interface ErrorHandler<E extends Throwable> {
+  public interface ErrorHandler<E extends Exception> {
     /**
      * Receive error asynchronously.
      *

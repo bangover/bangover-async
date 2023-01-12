@@ -20,7 +20,7 @@ public interface Deferred<T> {
    *
    * @param error The error
    */
-  public void reject(Throwable error);
+  public void reject(Exception error);
 
   /**
    * This interface declares the contract for the component which performs a deferred operation.

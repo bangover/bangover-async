@@ -5,7 +5,7 @@ import cloud.bangover.async.promises.Promise.ErrorHandler;
 import lombok.Getter;
 
 @Getter
-public final class MockErrorHandler<E extends Throwable> implements ErrorHandler<E> {
+public final class MockErrorHandler<E extends Exception> implements ErrorHandler<E> {
   private final MockHistory<E> history = new MockHistory<E>();
   
   @Override

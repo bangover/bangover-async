@@ -1,14 +1,17 @@
 package cloud.bangover.async.promises;
 
-import cloud.bangover.async.promises.Deferred.DeferredFunction;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+import cloud.bangover.async.promises.Deferred.DeferredFunction;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
@@ -69,7 +72,7 @@ public final class Promises {
    * @param error The promise rejection error
    * @return The rejected promise
    */
-  public static final <T, E extends Throwable> Promise<T> rejectedBy(E error) {
+  public static final <T, E extends Exception> Promise<T> rejectedBy(E error) {
     return of(deferred -> deferred.reject(error));
   }
 
@@ -100,25 +103,25 @@ public final class Promises {
 
     @Override
     public Promise<T> then(Deferred<T> resolver) {
-      return then(response -> resolver.resolve(response));
+      return this.then(response -> resolver.resolve(response));
     }
 
     @Override
-    public <E extends Throwable> Promise<T> error(@NonNull Class<E> errorType,
+    public <E extends Exception> Promise<T> error(@NonNull Class<E> errorType,
         @NonNull ErrorHandler<E> errorHandler) {
       state.addErrorHandler(errorType, errorHandler);
       return this;
     }
 
     @Override
-    public Promise<T> error(@NonNull ErrorHandler<Throwable> errorHandler) {
+    public Promise<T> error(@NonNull ErrorHandler<Exception> errorHandler) {
       state.addDefaultErrorHandler(errorHandler);
       return this;
     }
 
     @Override
     public Promise<T> error(Deferred<T> rejector) {
-      return error(error -> rejector.reject(error));
+      return this.error(error -> rejector.reject(error));
     }
 
     @Override
@@ -138,7 +141,7 @@ public final class Promises {
       return new DeferredPromise<C>(
           createChainingDeferredFunctionExecutor((previousResult, deferred) -> {
             chainingPromiseProvider.derivePromise(previousResult).delegate(deferred);
-          }));
+          }), Collections.emptyList());
     }
 
     @Override
@@ -157,12 +160,21 @@ public final class Promises {
       }
     }
 
+    @Override
+    public void await(long timeout) throws Exception {
+      CountDownLatch latch = new CountDownLatch(1);
+      finalize(() -> latch.countDown());
+      latch.await(timeout, TimeUnit.SECONDS);
+    }
+
     private <C> DeferredFunction<C> createChainingDeferredFunctionExecutor(
         ChainingDeferredFunction<T, C> chainingDeferredFunction) {
       return deferred -> {
-        then(response -> {
+        this.then(response -> {
           chainingDeferredFunction.execute(response, deferred);
-        }).error(error -> deferred.reject(error));
+        }).error(error -> {
+          deferred.reject(error);
+        });
       };
     }
 
@@ -172,8 +184,9 @@ public final class Promises {
     }
 
     private void executeDeferredOperation(DeferredFunction<T> deferredOperationExecutor) {
-      promiseDeferredFunctionRunner.executeDeferredOperation(deferredOperationExecutor,
-          createDeferred());
+      promiseDeferredFunctionRunner.executeDeferredOperation(deferred -> {
+        deferredOperationExecutor.execute(deferred);
+      }, createDeferred());
     }
 
     private void appendAllErrorHandlers(Collection<ErrorHandlerDescriptorState> descriptors) {
@@ -190,7 +203,7 @@ public final class Promises {
         }
 
         @Override
-        public void reject(Throwable error) {
+        public void reject(Exception error) {
           state.reject(error);
         }
       };
@@ -201,7 +214,7 @@ public final class Promises {
       finalizePromise();
     }
 
-    private synchronized void handleError(Throwable error) {
+    private synchronized void handleError(Exception error) {
       getAcceptableDescriptorsFor(error).forEach(descriptor -> descriptor.apply(error));
       finalizePromise();
     }
@@ -210,7 +223,7 @@ public final class Promises {
       finalizerHandlers.forEach(descriptor -> descriptor.apply(null));
     }
 
-    private Collection<ErrorHandlerDescriptor> getAcceptableDescriptorsFor(Throwable error) {
+    private Collection<ErrorHandlerDescriptor> getAcceptableDescriptorsFor(Exception error) {
       return Optional
           .<Collection<ErrorHandlerDescriptor>>of(errorHandlers.stream()
               .filter(handlerDescriptor -> handlerDescriptor.isAcceptableFor(error))
@@ -221,7 +234,7 @@ public final class Promises {
     private interface ErrorHandlerDescriptorState {
       public Class<?> getErrorType();
 
-      public ErrorHandler<Throwable> getErrorHandler();
+      public ErrorHandler<Exception> getErrorHandler();
     }
 
     private abstract class State implements Deferred<T> {
@@ -230,15 +243,15 @@ public final class Promises {
       }
 
       @SuppressWarnings("unchecked")
-      public <E extends Throwable> void addErrorHandler(Class<E> errorType,
+      public <E extends Exception> void addErrorHandler(Class<E> errorType,
           ErrorHandler<E> errorHandler) {
         errorHandlers
-            .add(new ErrorHandlerDescriptor(errorType, (ErrorHandler<Throwable>) errorHandler));
+            .add(new ErrorHandlerDescriptor(errorType, (ErrorHandler<Exception>) errorHandler));
       }
 
-      public void addDefaultErrorHandler(ErrorHandler<Throwable> errorHandler) {
+      public void addDefaultErrorHandler(ErrorHandler<Exception> errorHandler) {
         defaultErrorHandlers.add(
-            new ErrorHandlerDescriptor(Throwable.class, (ErrorHandler<Throwable>) errorHandler));
+            new ErrorHandlerDescriptor(Exception.class, (ErrorHandler<Exception>) errorHandler));
       }
 
       public void addFinalizer(FinalizingHandler finalizer) {
@@ -254,7 +267,7 @@ public final class Promises {
       }
 
       @Override
-      public void reject(Throwable error) {
+      public void reject(Exception error) {
         state = new RejectedState(error);
         handleError(error);
       }
@@ -270,7 +283,7 @@ public final class Promises {
       }
 
       @Override
-      public void reject(Throwable error) {
+      public void reject(Exception error) {
         throw new PromiseResolutionDuplicateException();
       }
 
@@ -289,7 +302,7 @@ public final class Promises {
 
     @RequiredArgsConstructor
     private class RejectedState extends State {
-      private final Throwable error;
+      private final Exception error;
 
       @Override
       public void resolve(T response) {
@@ -297,19 +310,19 @@ public final class Promises {
       }
 
       @Override
-      public void reject(Throwable error) {
+      public void reject(Exception error) {
         throw new PromiseRejectionDuplicateException();
       }
 
       @Override
-      public <E extends Throwable> void addErrorHandler(Class<E> errorType,
+      public <E extends Exception> void addErrorHandler(Class<E> errorType,
           ErrorHandler<E> errorHandler) {
         super.addErrorHandler(errorType, errorHandler);
         handleError(error);
       }
 
       @Override
-      public void addDefaultErrorHandler(ErrorHandler<Throwable> errorHandler) {
+      public void addDefaultErrorHandler(ErrorHandler<Exception> errorHandler) {
         super.addDefaultErrorHandler(errorHandler);
         handleError(error);
       }
@@ -355,12 +368,12 @@ public final class Promises {
     }
 
     @RequiredArgsConstructor
-    private class ErrorHandlerDescriptor extends HandlerDescriptor<Throwable>
+    private class ErrorHandlerDescriptor extends HandlerDescriptor<Exception>
         implements ErrorHandlerDescriptorState {
       @Getter
       private final Class<?> errorType;
       @Getter
-      private final ErrorHandler<Throwable> errorHandler;
+      private final ErrorHandler<Exception> errorHandler;
 
       public ErrorHandlerDescriptor(ErrorHandlerDescriptorState proto) {
         this(proto.getErrorType(), proto.getErrorHandler());
@@ -371,7 +384,7 @@ public final class Promises {
       }
 
       @Override
-      protected void doAccept(Throwable response) {
+      protected void doAccept(Exception response) {
         errorHandler.onError(response);
       }
     }
