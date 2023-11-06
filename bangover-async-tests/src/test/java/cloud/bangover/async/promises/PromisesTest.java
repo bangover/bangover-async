@@ -1,14 +1,13 @@
 package cloud.bangover.async.promises;
 
-import org.junit.Assert;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
-
 import cloud.bangover.async.promises.Promises.PromiseRejectionDuplicateException;
 import cloud.bangover.async.promises.Promises.PromiseResolutionDuplicateException;
 import cloud.bangover.timer.Timeout;
 import cloud.bangover.timer.Timer;
+import org.junit.Assert;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 
 @RunWith(JUnit4.class)
 public class PromisesTest {

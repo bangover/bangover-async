@@ -1,5 +1,7 @@
 package cloud.bangover.async.promises;
 
+import cloud.bangover.async.Async;
+import cloud.bangover.async.promises.Deferred.DeferredFunction;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedList;
@@ -10,8 +12,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-
-import cloud.bangover.async.promises.Deferred.DeferredFunction;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
@@ -81,17 +81,21 @@ public final class Promises {
     private final Collection<ErrorHandlerDescriptor> errorHandlers = new LinkedList<>();
     private final Collection<ErrorHandlerDescriptor> defaultErrorHandlers = new LinkedList<>();
     private final Collection<FinalizingHandlerDescriptor> finalizerHandlers = new LinkedList<>();
+    private final Optional<String> callerAsyncContextKey;
     private State state = new PendingState();
 
     public DeferredPromise(@NonNull DeferredFunction<T> deferredOperationExecutor) {
       super();
+      this.callerAsyncContextKey = Optional.of(Async.getCurrentContext().getKey());
       executeDeferredOperation(deferredOperationExecutor);
     }
 
     public DeferredPromise(@NonNull DeferredFunction<T> deferredOperationExecutor,
+        Optional<String> callerAsyncContextKey,
         Collection<ErrorHandlerDescriptorState> descriptors) {
       super();
       appendAllErrorHandlers(descriptors);
+      this.callerAsyncContextKey = callerAsyncContextKey;
       executeDeferredOperation(deferredOperationExecutor);
     }
 
@@ -133,7 +137,8 @@ public final class Promises {
     @Override
     public <C> Promise<C> chain(ChainingDeferredFunction<T, C> chainingDeferredFunction) {
       return new DeferredPromise<C>(
-          createChainingDeferredFunctionExecutor(chainingDeferredFunction), getDescriptorStates());
+          createChainingDeferredFunctionExecutor(chainingDeferredFunction),
+          this.callerAsyncContextKey, getDescriptorStates());
     }
 
     @Override
@@ -141,7 +146,7 @@ public final class Promises {
       return new DeferredPromise<C>(
           createChainingDeferredFunctionExecutor((previousResult, deferred) -> {
             chainingPromiseProvider.derivePromise(previousResult).delegate(deferred);
-          }), Collections.emptyList());
+          }), this.callerAsyncContextKey, Collections.emptyList());
     }
 
     @Override
@@ -185,8 +190,15 @@ public final class Promises {
 
     private void executeDeferredOperation(DeferredFunction<T> deferredOperationExecutor) {
       promiseDeferredFunctionRunner.executeDeferredOperation(deferred -> {
-        deferredOperationExecutor.execute(deferred);
+        // Worker thread
+        executeInsideContext(() -> {
+          deferredOperationExecutor.execute(deferred);
+        });
       }, createDeferred());
+    }
+
+    private void executeInsideContext(Runnable runnable) {
+      Async.executeInsideContext(this.callerAsyncContextKey, runnable);
     }
 
     private void appendAllErrorHandlers(Collection<ErrorHandlerDescriptorState> descriptors) {
@@ -210,13 +222,17 @@ public final class Promises {
     }
 
     private synchronized void handleResponse(T response) {
-      responseHandlers.forEach(descriptor -> descriptor.apply(response));
-      finalizePromise();
+      executeInsideContext(() -> {
+        responseHandlers.forEach(descriptor -> descriptor.apply(response));
+        finalizePromise();
+      });
     }
 
     private synchronized void handleError(Exception error) {
-      getAcceptableDescriptorsFor(error).forEach(descriptor -> descriptor.apply(error));
-      finalizePromise();
+      executeInsideContext(() -> {
+        getAcceptableDescriptorsFor(error).forEach(descriptor -> descriptor.apply(error));
+        finalizePromise();
+      });
     }
 
     private synchronized void finalizePromise() {

@@ -24,11 +24,10 @@ public class CriticalSection {
   public CriticalSection() {
     this(new ReentrantLock());
   }
-  
+
   public CriticalSection(Lock lock) {
     this(lock, DEFAULT_AWAITING_TIME_IN_SECONDS, TimeUnit.SECONDS);
   }
-  
 
   /**
    * Execute a function which isn't return any response inside the critical section.

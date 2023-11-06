@@ -7,7 +7,7 @@ import lombok.Getter;
 @Getter
 public final class MockErrorHandler<E extends Exception> implements ErrorHandler<E> {
   private final MockHistory<E> history = new MockHistory<E>();
-  
+
   @Override
   public void onError(E error) {
     this.history.put(error);
